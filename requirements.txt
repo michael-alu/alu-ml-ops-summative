@@ -1,0 +1,12 @@
+# Pinned in a later step once the notebook and app are built.
+# Core stack:
+#   tensorflow
+#   librosa
+#   numpy
+#   scikit-learn
+#   fastapi
+#   uvicorn
+#   python-multipart
+#   streamlit
+#   matplotlib
+#   locust
