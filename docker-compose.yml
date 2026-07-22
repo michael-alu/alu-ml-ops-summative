@@ -1,0 +1,17 @@
+# Local load-test setup: nginx load-balances across N api replicas.
+# Scale with: docker compose up --scale api=1 (then =2, =3) and point Locust at nginx.
+
+services:
+  api:
+    build: .
+    expose:
+      - "8000"
+
+  nginx:
+    image: nginx:alpine
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "8080:8080"
+    depends_on:
+      - api
