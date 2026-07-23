@@ -1,3 +1,13 @@
+---
+title: Sound Classification MLOps
+emoji: 🔊
+colorFrom: blue
+colorTo: green
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # Sound Classification MLOps Pipeline
 
 An end-to-end MLOps pipeline that classifies environmental sounds from `.wav`
@@ -12,18 +22,23 @@ regularized CNN.
 
 ## Links
 
-- GitHub repo: TBD
-- Live URL: TBD
-- Video demo (YouTube): TBD
+- GitHub repo: TBD (add your repo URL)
+- Live URL (Hugging Face Space): TBD (add after deploying)
+- Video demo (YouTube): TBD (add your demo link)
 
 ## Project structure
 
 ```
 alu-ml-ops-summative/
 ├── README.md
-├── requirements.txt
-├── Dockerfile                 # API image (load test + deploy)
-├── docker-compose.yml         # nginx + scalable api replicas
+├── Dockerfile                 # HF Space image (API + UI on port 7860)
+├── docker-compose.yml         # nginx + scalable api replicas (load test)
+├── start.sh                   # launches API + UI in the HF image
+├── requirements.txt           # full stack (notebook + dev)
+├── requirements-app.txt       # deployed app runtime deps
+├── requirements-api.txt       # slim api-image deps (load test)
+├── docker/
+│   └── Dockerfile.api         # API-only image used by docker-compose
 ├── notebook/
 │   └── sound_classification.ipynb
 ├── src/
@@ -36,11 +51,13 @@ alu-ml-ops-summative/
 ├── ui/
 │   └── app.py                 # Streamlit dashboard
 ├── scripts/
-│   └── generate_insights.py   # builds dataset insight charts for the UI
+│   ├── generate_insights.py   # builds dataset insight charts for the UI
+│   └── run_load_test.sh       # automated Locust run across container counts
 ├── nginx/
 │   └── nginx.conf             # load balancer for the container scaling test
 ├── locust/
 │   └── locustfile.py          # flood test
+├── load_test_results/         # Locust CSV results
 ├── assets/                    # insight charts + a sample clip
 ├── data/
 │   ├── raw/                   # downloaded ESC-50 (gitignored)
@@ -108,6 +125,31 @@ streamlit run ui/app.py
 The dashboard shows model uptime, dataset visualizations, single-clip prediction,
 bulk upload, and a retraining button.
 
+## Deploy to Hugging Face Spaces
+
+The root `Dockerfile` runs the API and the UI together on port 7860 for a public
+Hugging Face Space. The Space config lives in the YAML frontmatter at the top of
+this README (`sdk: docker`, `app_port: 7860`).
+
+1. Create a new Space at https://huggingface.co/new-space and pick the **Docker** SDK.
+2. Push this repository to the Space:
+
+   ```bash
+   git remote add space https://huggingface.co/spaces/<user>/<space-name>
+   git push space main
+   ```
+
+3. Hugging Face builds the image and serves the dashboard at the Space URL. The
+   trained model ships in the repo (`models/`), so no extra download is needed.
+
+Locally the same image runs with:
+
+```bash
+docker build -t sound-hf .
+docker run -p 7860:7860 sound-hf
+# open http://localhost:7860
+```
+
 ## API endpoints
 
 | Method | Path | Purpose |
@@ -141,12 +183,26 @@ locust -f locust/locustfile.py --host http://localhost:8080
 Repeat with `--scale api=2` and `--scale api=3`, running the same Locust test each
 time, and record latency and requests per second.
 
+The whole run is automated:
+
+```bash
+bash scripts/run_load_test.sh
+```
+
 ### Flood test results
 
-To be filled in after running the test across 1, 2, and 3 containers.
+Conditions: 50 concurrent users, 60 seconds per run, spawn rate 10/s, on a 4-CPU
+Colima VM. Requests hit nginx, which round-robins across the api replicas.
 
-| Containers | Users | RPS | Median latency (ms) | p95 latency (ms) | Failures |
-|---|---|---|---|---|---|
-| 1 | TBD | TBD | TBD | TBD | TBD |
-| 2 | TBD | TBD | TBD | TBD | TBD |
-| 3 | TBD | TBD | TBD | TBD | TBD |
+| Containers | Users | RPS | Median latency (ms) | p95 latency (ms) | Requests | Failures |
+|---|---|---|---|---|---|---|
+| 1 | 50 | 11.6 | 2800 | 17000 | 685 | 0 |
+| 2 | 50 | 11.3 | 2500 | 21000 | 666 | 0 |
+| 3 | 50 | 14.6 | 1600 | 19000 | 861 | 0 |
+
+Scaling from 1 to 3 containers cut median latency by about 43% (2800 to 1600 ms)
+and raised throughput by about 26% (11.6 to 14.6 RPS), with zero failures at every
+level. The gains are modest because the Colima VM has only 4 CPUs shared across all
+replicas plus nginx and Locust, and TensorFlow inference is CPU-bound, so replicas
+beyond the available cores give diminishing returns. The high absolute latencies
+are the expected effect of 50 users flooding CPU-bound inference at once.

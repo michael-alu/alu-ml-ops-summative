@@ -7,8 +7,7 @@ venv
 data
 notebook
 locust
-ui
-assets
+load_test_results
 *.zip
 .DS_Store
 .ipynb_checkpoints
