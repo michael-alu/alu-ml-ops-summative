@@ -7,12 +7,15 @@ env/
 .ipynb_checkpoints/
 
 # Data and models (large binaries; keep folders via .gitkeep)
+data/raw/
 data/train/*
 data/test/*
 data/uploads/*
 !data/**/.gitkeep
 models/*
 !models/.gitkeep
+!models/sound_model.h5
+!models/class_names.json
 
 # OS / editor
 .DS_Store
