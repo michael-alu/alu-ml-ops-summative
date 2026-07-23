@@ -1,43 +1,43 @@
 """Streamlit UI: uptime, data visualizations, prediction, upload, and retrain.
 
-Talks to the FastAPI service over HTTP. API base URL comes from an env var so the
-same UI works locally and when deployed.
+Runs the model in-process (imports the same src modules the API uses) so the app
+is self-contained on Streamlit Community Cloud, no separate API host needed.
 """
 
 import json
-import os
+import sys
+import tempfile
+import time
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
-import requests
 import streamlit as st
 
 ROOT: Path = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+import tensorflow as tf
+
+from src.prediction import load_class_names, predict_with_model
+from src.retrain import retrain
+
 ASSETS_DIR: Path = ROOT / "assets"
+MODEL_PATH: Path = ROOT / "models" / "sound_model.h5"
+UPLOADS_DIR: Path = ROOT / "data" / "uploads"
 
 
-def get_api_base_url() -> str:
-    """Read the API URL from Streamlit secrets (cloud) or an env var (local)."""
-    try:
-        if "API_BASE_URL" in st.secrets:
-            return str(st.secrets["API_BASE_URL"])
-    except Exception:
-        pass
-    return os.getenv("API_BASE_URL", "http://localhost:8000")
+@st.cache_resource
+def get_start_time() -> float:
+    """App start time, stable across reruns (cached for the app lifetime)."""
+    return time.time()
 
 
-API_BASE_URL: str = get_api_base_url()
-
-
-def get_health() -> Optional[Dict[str, object]]:
-    """Fetch API health, or None if the service is unreachable."""
-    try:
-        response = requests.get(f"{API_BASE_URL}/health", timeout=5)
-        response.raise_for_status()
-        return response.json()
-    except requests.RequestException:
-        return None
+@st.cache_resource
+def load_model_and_classes() -> Tuple[tf.keras.Model, List[str]]:
+    """Load the model and labels once and reuse across reruns."""
+    model = tf.keras.models.load_model(MODEL_PATH)
+    return model, load_class_names()
 
 
 def load_insights() -> Optional[Dict[str, object]]:
@@ -49,16 +49,13 @@ def load_insights() -> Optional[Dict[str, object]]:
 
 def render_status() -> None:
     st.sidebar.header("Model status")
-    health = get_health()
-    if health is None:
-        st.sidebar.error("API unreachable")
-        return
-    st.sidebar.metric("Uptime (seconds)", health["uptime_seconds"])
-    if health["model_loaded"]:
+    st.sidebar.metric("App uptime (seconds)", round(time.time() - get_start_time(), 1))
+    if MODEL_PATH.exists():
+        _, class_names = load_model_and_classes()
         st.sidebar.success("Model loaded")
+        st.sidebar.caption("Classes: " + ", ".join(class_names))
     else:
-        st.sidebar.warning("Model not loaded")
-    st.sidebar.caption("Classes: " + ", ".join(health.get("classes", [])))
+        st.sidebar.warning("Model not found")
 
 
 def tab_predict() -> None:
@@ -67,16 +64,18 @@ def tab_predict() -> None:
     if audio_file is not None:
         st.audio(audio_file)
         if st.button("Predict", type="primary"):
-            files = {"file": (audio_file.name, audio_file.getvalue(), "audio/wav")}
             with st.spinner("Predicting ..."):
-                response = requests.post(f"{API_BASE_URL}/predict", files=files, timeout=60)
-            if response.ok:
-                result = response.json()
-                st.success(f"Prediction: {result['label']} ({result['confidence']:.1%})")
-                scores = pd.Series(result["scores"]).sort_values(ascending=False)
-                st.bar_chart(scores)
-            else:
-                st.error(f"Prediction failed: {response.text}")
+                model, class_names = load_model_and_classes()
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
+                    tmp.write(audio_file.getvalue())
+                    tmp_path = tmp.name
+                try:
+                    result = predict_with_model(model, class_names, tmp_path)
+                finally:
+                    Path(tmp_path).unlink(missing_ok=True)
+            st.success(f"Prediction: {result['label']} ({result['confidence']:.1%})")
+            scores = pd.Series(result["scores"]).sort_values(ascending=False)
+            st.bar_chart(scores)
 
 
 def tab_insights() -> None:
@@ -104,32 +103,42 @@ def tab_insights() -> None:
         st.image(str(spec_path), use_container_width=True)
 
 
+def save_uploads(label: str, uploads: List) -> int:
+    dest = UPLOADS_DIR / label
+    dest.mkdir(parents=True, exist_ok=True)
+    saved = 0
+    for f in uploads:
+        if not f.name.endswith(".wav"):
+            continue
+        (dest / f.name).write_bytes(f.getvalue())
+        saved += 1
+    return saved
+
+
 def tab_retrain() -> None:
     st.subheader("Upload data and retrain")
-    health = get_health()
-    classes: List[str] = health.get("classes", []) if health else []
+    _, class_names = load_model_and_classes()
 
-    label = st.selectbox("Class label for the uploaded clips", classes) if classes else st.text_input("Class label")
-    uploads = st.file_uploader("Upload multiple .wav clips", type=["wav"], accept_multiple_files=True, key="bulk")
+    label = st.selectbox("Class label for the uploaded clips", class_names)
+    uploads = st.file_uploader(
+        "Upload multiple .wav clips", type=["wav"], accept_multiple_files=True, key="bulk"
+    )
 
     if uploads and label and st.button("Upload clips"):
-        files = [("files", (f.name, f.getvalue(), "audio/wav")) for f in uploads]
-        response = requests.post(f"{API_BASE_URL}/upload", data={"label": label}, files=files, timeout=120)
-        if response.ok:
-            st.success(f"Saved {response.json()['saved']} clips for label '{label}'")
-        else:
-            st.error(f"Upload failed: {response.text}")
+        saved = save_uploads(label, uploads)
+        st.success(f"Saved {saved} clips for label '{label}'")
 
     st.divider()
     if st.button("Trigger retraining", type="primary"):
         with st.spinner("Retraining on uploaded data ..."):
-            response = requests.post(f"{API_BASE_URL}/retrain", timeout=1800)
-        if response.ok:
-            metrics = response.json()["metrics"]
-            st.success("Retraining complete")
-            st.json(metrics)
-        else:
-            st.error(f"Retraining failed: {response.text}")
+            try:
+                metrics = retrain()
+            except ValueError as error:
+                st.error(str(error))
+                return
+        load_model_and_classes.clear()
+        st.success("Retraining complete")
+        st.json(metrics)
 
 
 def main() -> None:
@@ -137,12 +146,12 @@ def main() -> None:
     st.title("🔊 Sound Classification MLOps Dashboard")
     render_status()
 
-    predict, insights, retrain = st.tabs(["Predict", "Data Insights", "Retrain"])
+    predict, insights, retrain_tab = st.tabs(["Predict", "Data Insights", "Retrain"])
     with predict:
         tab_predict()
     with insights:
         tab_insights()
-    with retrain:
+    with retrain_tab:
         tab_retrain()
 
 

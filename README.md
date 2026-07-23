@@ -13,8 +13,7 @@ regularized CNN.
 ## Links
 
 - GitHub repo: TBD (add your repo URL)
-- Live UI (Streamlit Community Cloud): TBD (add after deploying)
-- Live API (Google Cloud Run, Swagger at `/docs`): TBD (add after deploying)
+- Live app (Streamlit Community Cloud): TBD (add after deploying)
 - Video demo (YouTube): TBD (add your demo link)
 
 ## Project structure
@@ -22,7 +21,7 @@ regularized CNN.
 ```
 alu-ml-ops-summative/
 ├── README.md
-├── Dockerfile                 # API image (Cloud Run deploy + load test)
+├── Dockerfile                 # API image (load test + local Swagger)
 ├── docker-compose.yml         # nginx + scalable api replicas (load test)
 ├── requirements.txt           # full stack (notebook + dev)
 ├── requirements-api.txt       # slim api-image deps
@@ -94,7 +93,20 @@ ESC-50, preprocesses audio, trains the CNN, evaluates it, and writes
 python scripts/generate_insights.py
 ```
 
-### 3. Run the API
+### 3. Run the UI
+
+```bash
+streamlit run ui/app.py
+```
+
+The dashboard shows model uptime, dataset visualizations, single-clip prediction,
+bulk upload, and a retraining button. It loads the model in-process, so no API
+server is required.
+
+### 4. Run the API (optional)
+
+The UI runs the model directly, but the FastAPI service is also provided and is
+what the load test targets:
 
 ```bash
 uvicorn api.main:app --reload --port 8000
@@ -102,48 +114,24 @@ uvicorn api.main:app --reload --port 8000
 
 Interactive docs are at `http://localhost:8000/docs`.
 
-### 4. Run the UI
-
-```bash
-export API_BASE_URL=http://localhost:8000
-streamlit run ui/app.py
-```
-
-The dashboard shows model uptime, dataset visualizations, single-clip prediction,
-bulk upload, and a retraining button.
-
 ## Deployment
 
-The API deploys to **Google Cloud Run** and the UI to **Streamlit Community Cloud**.
-The UI reaches the deployed API over HTTP via `API_BASE_URL`.
-
-### Deploy the API to Cloud Run
-
-The root `Dockerfile` builds the API image, which binds to `${PORT:-8000}` (Cloud
-Run sets `$PORT` automatically). From the repo root (or Google Cloud Shell):
-
-```bash
-gcloud run deploy sound-api \
-    --source . \
-    --region us-central1 \
-    --memory 2Gi \
-    --allow-unauthenticated
-```
-
-Cloud Run returns a public URL. Swagger docs are at `<url>/docs`.
+The UI deploys to **Streamlit Community Cloud** (free, no card). It runs the model
+in-process, so predict and retrain both work in the deployed app. The FastAPI
+service is demonstrated locally (Swagger + the Docker load test) rather than hosted
+separately.
 
 ### Deploy the UI to Streamlit Community Cloud
 
 1. Push this repo to GitHub.
 2. At https://share.streamlit.io create an app from the repo with main file
    `ui/app.py`.
-3. In the app's **Secrets**, set the Cloud Run URL:
+3. In the app's **Advanced settings**, set the Python version to **3.11**
+   (TensorFlow 2.16 requires Python 3.9 to 3.11).
 
-   ```toml
-   API_BASE_URL = "https://sound-api-xxxx.run.app"
-   ```
-
-The UI reads `API_BASE_URL` from Streamlit secrets (cloud) or an env var (local).
+The trained model (`models/`) and insight charts (`assets/`) ship in the repo, and
+the root `requirements.txt` installs the runtime, so no other configuration is
+needed.
 
 ## API endpoints
 
