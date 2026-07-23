@@ -3,9 +3,7 @@
 
 services:
   api:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.api
+    build: .
     expose:
       - "8000"
 

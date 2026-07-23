@@ -13,9 +13,21 @@ import pandas as pd
 import requests
 import streamlit as st
 
-API_BASE_URL: str = os.getenv("API_BASE_URL", "http://localhost:8000")
 ROOT: Path = Path(__file__).resolve().parent.parent
 ASSETS_DIR: Path = ROOT / "assets"
+
+
+def get_api_base_url() -> str:
+    """Read the API URL from Streamlit secrets (cloud) or an env var (local)."""
+    try:
+        if "API_BASE_URL" in st.secrets:
+            return str(st.secrets["API_BASE_URL"])
+    except Exception:
+        pass
+    return os.getenv("API_BASE_URL", "http://localhost:8000")
+
+
+API_BASE_URL: str = get_api_base_url()
 
 
 def get_health() -> Optional[Dict[str, object]]:

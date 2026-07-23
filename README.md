@@ -1,13 +1,3 @@
----
-title: Sound Classification MLOps
-emoji: 🔊
-colorFrom: blue
-colorTo: green
-sdk: docker
-app_port: 7860
-pinned: false
----
-
 # Sound Classification MLOps Pipeline
 
 An end-to-end MLOps pipeline that classifies environmental sounds from `.wav`
@@ -23,7 +13,8 @@ regularized CNN.
 ## Links
 
 - GitHub repo: TBD (add your repo URL)
-- Live URL (Hugging Face Space): TBD (add after deploying)
+- Live UI (Streamlit Community Cloud): TBD (add after deploying)
+- Live API (Google Cloud Run, Swagger at `/docs`): TBD (add after deploying)
 - Video demo (YouTube): TBD (add your demo link)
 
 ## Project structure
@@ -31,14 +22,10 @@ regularized CNN.
 ```
 alu-ml-ops-summative/
 ├── README.md
-├── Dockerfile                 # HF Space image (API + UI on port 7860)
+├── Dockerfile                 # API image (Cloud Run deploy + load test)
 ├── docker-compose.yml         # nginx + scalable api replicas (load test)
-├── start.sh                   # launches API + UI in the HF image
 ├── requirements.txt           # full stack (notebook + dev)
-├── requirements-app.txt       # deployed app runtime deps
-├── requirements-api.txt       # slim api-image deps (load test)
-├── docker/
-│   └── Dockerfile.api         # API-only image used by docker-compose
+├── requirements-api.txt       # slim api-image deps
 ├── notebook/
 │   └── sound_classification.ipynb
 ├── src/
@@ -125,30 +112,38 @@ streamlit run ui/app.py
 The dashboard shows model uptime, dataset visualizations, single-clip prediction,
 bulk upload, and a retraining button.
 
-## Deploy to Hugging Face Spaces
+## Deployment
 
-The root `Dockerfile` runs the API and the UI together on port 7860 for a public
-Hugging Face Space. The Space config lives in the YAML frontmatter at the top of
-this README (`sdk: docker`, `app_port: 7860`).
+The API deploys to **Google Cloud Run** and the UI to **Streamlit Community Cloud**.
+The UI reaches the deployed API over HTTP via `API_BASE_URL`.
 
-1. Create a new Space at https://huggingface.co/new-space and pick the **Docker** SDK.
-2. Push this repository to the Space:
+### Deploy the API to Cloud Run
 
-   ```bash
-   git remote add space https://huggingface.co/spaces/<user>/<space-name>
-   git push space main
-   ```
-
-3. Hugging Face builds the image and serves the dashboard at the Space URL. The
-   trained model ships in the repo (`models/`), so no extra download is needed.
-
-Locally the same image runs with:
+The root `Dockerfile` builds the API image, which binds to `${PORT:-8000}` (Cloud
+Run sets `$PORT` automatically). From the repo root (or Google Cloud Shell):
 
 ```bash
-docker build -t sound-hf .
-docker run -p 7860:7860 sound-hf
-# open http://localhost:7860
+gcloud run deploy sound-api \
+    --source . \
+    --region us-central1 \
+    --memory 2Gi \
+    --allow-unauthenticated
 ```
+
+Cloud Run returns a public URL. Swagger docs are at `<url>/docs`.
+
+### Deploy the UI to Streamlit Community Cloud
+
+1. Push this repo to GitHub.
+2. At https://share.streamlit.io create an app from the repo with main file
+   `ui/app.py`.
+3. In the app's **Secrets**, set the Cloud Run URL:
+
+   ```toml
+   API_BASE_URL = "https://sound-api-xxxx.run.app"
+   ```
+
+The UI reads `API_BASE_URL` from Streamlit secrets (cloud) or an env var (local).
 
 ## API endpoints
 

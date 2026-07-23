@@ -6,6 +6,9 @@ __pycache__
 venv
 data
 notebook
+ui
+assets
+scripts
 locust
 load_test_results
 *.zip
