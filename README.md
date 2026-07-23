@@ -62,15 +62,13 @@ alu-ml-ops-summative/
 
 ### Evaluation metrics (held-out fold 5 test set)
 
-To be filled in from the notebook run.
-
 | Metric | Value |
 |---|---|
-| Accuracy | TBD |
-| Loss | TBD |
-| Precision (macro) | TBD |
-| Recall (macro) | TBD |
-| F1 (macro) | TBD |
+| Accuracy | 0.863 |
+| Loss | 0.443 |
+| Precision (macro) | 0.872 |
+| Recall (macro) | 0.863 |
+| F1 (macro) | 0.863 |
 
 ## Setup
 

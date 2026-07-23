@@ -1,0 +1,22 @@
+{
+  "num_clips": 400,
+  "num_classes": 10,
+  "clips_per_class": 40,
+  "features": [
+    {
+      "name": "Class distribution",
+      "chart": "class_distribution.png",
+      "story": "Every class has the same number of clips, so the dataset is perfectly balanced. Plain accuracy is a fair headline metric and no class weighting is needed."
+    },
+    {
+      "name": "Loudness (RMS energy)",
+      "chart": "loudness_by_class.png",
+      "story": "Sustained sources carry high, steady energy while transient sounds sit low. Here 'helicopter' is loudest and 'clock_tick' is quietest, so energy alone already separates several classes."
+    },
+    {
+      "name": "Brightness (spectral centroid)",
+      "chart": "brightness_by_class.png",
+      "story": "Spectral centroid marks where the spectrum's center of mass sits. 'rain' skews high and bright while 'rooster' skews low, giving the model a cue that complements loudness."
+    }
+  ]
+}
